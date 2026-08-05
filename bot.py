@@ -1,50 +1,47 @@
 import os
-import yt_dlp
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
+import asyncio
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from pytubefix import YouTube
+from yt_dlp import YoutubeDL
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Salom! 👋\n\nMenga YouTube, TikTok, Instagram, Facebook, Twitter linkini yubor.\nMen senga video va audio yuklab beraman 🚀")
+    await update.message.reply_text("Salom! Menga YouTube link tashla, men video yuklab beraman 🎬")
 
-async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
-    if "http" not in url:
+    if "youtube.com" not in url and "youtu.be" not in url:
+        await update.message.reply_text("Iltimos faqat YouTube link yuboring")
         return
-    keyboard = [[InlineKeyboardButton("🎥 Video", callback_data=f"video|{url}"),InlineKeyboardButton("🎵 Audio", callback_data=f"audio|{url}")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Qanday formatda yuklayman?", reply_markup=reply_markup)
-
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    format_type, url = query.data.split("|")
-    await query.edit_message_text("⏳ Yuklanmoqda, 1-2 daqiqa kuting...")
+    
+    await update.message.reply_text("Yuklanmoqda, 1 daqiqa kuting... ⏳")
+    
     try:
-        if format_type == "video":
-            ydl_opts = {'format': 'best[height<=720]','outtmpl': 'video.%(ext)s',}
-        else:
-            ydl_opts = {'format': 'bestaudio/best','outtmpl': 'audio.%(ext)s','postprocessors': [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3',}]}
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl_opts = {
+            'format': 'mp4',
+            'outtmpl': '%(title)s.%(ext)s',
+            'noplaylist': True,
+        }
+        with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            title = info.get('title', 'Media')
-        if format_type == "video":
-            await context.bot.send_video(chat_id=query.message.chat_id, video=open('video.mp4', 'rb'), caption=title)
-            os.remove('video.mp4')
-        else:
-            await context.bot.send_audio(chat_id=query.message.chat_id, audio=open('audio.mp3', 'rb'), title=title)
-            os.remove('audio.mp3')
+            filename = ydl.prepare_filename(info)
+        
+        await update.message.reply_video(video=open(filename, 'rb'))
+        os.remove(filename)
+        
     except Exception as e:
-        await query.edit_message_text(f"Xatolik: {e}")
+        await update.message.reply_text(f"Xato: {e}")
 
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
+    
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
-    app.add_handler(CallbackQueryHandler(button))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
+    
     print("Bot ishga tushdi...")
     app.run_polling()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
